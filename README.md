@@ -12,3 +12,6 @@ keypad shield to work.
 
 Access the built-in AD converter, pins 0 and 1, code is from the Flashforth tutorial
 
+### SSD1306
+
+Driver for an SSD1306 based OLED on i2c bus.
