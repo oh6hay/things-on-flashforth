@@ -1,34 +1,89 @@
-\ Ported from https://github.com/TG9541/forth-oled-display
-\ TODO: figure out how addressing actually works
+\ Borrowed from https://github.com/TG9541/forth-oled-display
+\ also: see https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
 
+\ datasheet says, writing works like this
+\ 1. master sets start condition
+\ 2. then, slave address, here it's $3c
+\ 3. write mode established, r/w bit to 0
+\ 4. ack this
+\ 5. send either control byte or data byte.
+\      control byte: Co, D/C#, 0, 0, 0, 0, 0, 0
+\           Co: continuation bit
+\           D/C#: data/command selection bit
+\      Co == 0: following bytes are data
+\      Co == 1: following bytes are command
+\         D/C# == 0: following byte is command
+\         D/C# == 1: following byte is stored at GDDRAM
+\                    and in this case GDDRAM address pointer
+\                    is automatically increased
+\ 6. acknowledge bit will be generated
+\ 7. write mode is finished by applying stop condition
+\
+\ Co=1, D/C#=0: %10000000 = $80     Next one is command
+\ Co=1, D/C#=1: %11000000 = $C0     Next one goes to GDDRAM
+\ Co=0, D/C#=1: %01000000 = $40     Not data, goes to GDDRAM
+\                                   ^ draw 8bits and incr addr?
+\ The above doesn't make much sense but datasheet says so
+\ however, https://github.com/Matiasus/SSD1306/blob/master/lib/ssd1306.h
+\ suggests the Co and D/C# bits mean:
+\ Co   = 1: single thing
+\ Co   = 0: stream of things
+\ D/C# = 1: command
+\ D/C# = 0: data
+\ therefore:
+\ $80 -> single command
+\ $00 -> stream of commands
+\ $40 -> single byte of data
+\ $00 -> stream of data bytes
 
 -ssd1306
 marker -ssd1306
 
-: i2c.sb
+$80 constant command-byte
+$00 constant command-stream
+$c0 constant data-byte
+$40 constant data-stream
+
+\ i2c write one byte, discard whether it succeeded
+: i2c.wb ( n -- )
+  \ dup ." write: " . cr \ uncomment if you mess up.
   i2c.c! drop
 ;
 
-: i2c.wsa
-  2* i2c.sb
+\ i2c set write address ($3c)
+: i2c.wsa ( -- )
+  \ ." WSA" cr \ uncomment if you mess up
+  $3c 2* i2c.wb
 ;
 
+\ i2c write one byte with control byte first
+: i2c.w ( b control-byte -- )
+  i2c.start i2c.wsa i2c.wb i2c.wb i2c.stop
+;
 
-: i2c.w ( b reg-adr i2c-adr -- ) \ i2c write one byte to register address(?)
-  i2c.start i2c.wsa i2c.sb i2c.sb i2c.stop
+\ i2c write two bytes with control byte first
+: i2c.w2 ( b b control-byte -- )
+  i2c.start i2c.wsa i2c.wb swap i2c.wb i2c.wb i2c.stop
+;
+
+\ start i2c, send the start-command-stream byte
+: i2c.startcmds
+  i2c.start i2c.wsa command-stream i2c.wb
 ;
 
 \ display command:
-: dcmd ( b --) 0 $3c i2c.w ;
+: dcmd ( b --) command-stream i2c.w ;
 
 \ multiple display commands:
 : dcmds ( b b .. b n --)
-  0 do dcmd loop ;
+  0 do dcmd loop
+;
 
-: i2c.wsn ( pointer n reg-adr i2c-adr -- )
-  i2c.start i2c.wsa i2c.sb
+\ i2c write n bytes from pointer, with control byte first
+: i2c.wsp ( pointer n control-byte -- )
+  i2c.start i2c.wsa i2c.wb
   0 do
-    dup i + c@ i2c.sb
+    dup i + c@ i2c.wb
   loop
   i2c.stop drop
 ;
@@ -66,32 +121,36 @@ create ssd-init
 \ Initialise display
 : ssdi ( --)
   i2c.init
-  ssd-init
-  $1b 0 $3c i2c.wsn
+  ssd-init #27 command-stream i2c.wsp
 ;
 
  
 \ write byte in display memory:
 : wram ( b --) 
-   $40 $3c i2c.w ;
+   data-byte i2c.w ;
 
 variable page $7f allot 
 
 \ Write page:
 : wpage ( --)
-   0 $10 2 dcmds page $80 $40 $3c i2c.wsn ; 
+   0 $10 2 dcmds page $80 data-stream i2c.wsp ; 
 
 \ Write screen = 8 pages: 
 : wsc ( --)
-   8 0 do i $b0 + dcmd wpage loop ;
+  8 0 do
+    i $b0 + dcmd wpage
+  loop
+;
 
 \ Fill screen with character
 : fscr ( b --)
-   page $80 rot fill wsc ;
+  page $80 rot fill wsc
+;
 
 \ Clear screen
 : cls  ( --)
-   0 fscr ;      
+  0 fscr
+;
 
 \ Write pattern:
 : test ( --)
