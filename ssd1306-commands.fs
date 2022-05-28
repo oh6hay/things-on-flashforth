@@ -62,3 +62,12 @@ $20 $10 makedcmd page-addr-mode
 
 \ tests
 : foo s" foobar" dtxt ;
+
+\ clears everything and starts at 0,0 in horizontal addressing mode
+: clshome
+  hori-addr-mode
+  0 7 set-page-bounds
+  0 127 set-col-bounds
+  0 set-col-addr
+  cls
+;
