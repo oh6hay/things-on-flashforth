@@ -277,7 +277,7 @@ decimal
 \ spaces
 : spc ( u --) 0 do 0 wram loop ;
 
-\ display text compiled with $"
+\ display text put on stack with s"
 : dtxt ( adr --)
   \ count
   0 do dup c@ dup $20 =
