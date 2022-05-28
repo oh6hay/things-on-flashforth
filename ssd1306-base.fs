@@ -278,7 +278,7 @@ decimal
 : spc ( u --) 0 do 0 wram loop ;
 
 \ display text put on stack with s"
-: dtxt ( adr --)
+: dtxt ( adr len --)
   \ count
   0 do dup c@ dup $20 =
        if 3 spc drop 
