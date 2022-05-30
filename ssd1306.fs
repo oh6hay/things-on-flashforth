@@ -88,7 +88,7 @@ $40 constant data-stream
   i2c.stop drop
 ;
 
-
+flash
 create ssd-init
 \ * = vccstate dependant
  $ae c,  \ ssd1306_displayoff
@@ -117,6 +117,9 @@ create ssd-init
  $a6 c,  \ ssd1306_normaldisplay
  $2e c,  \ ssd1306_deactivate_scroll
  $af c,  \ ssd1306_displayon
+
+ram
+
  
 \ Initialise display
 : ssdi ( --)
@@ -164,7 +167,7 @@ variable page $7f allot
 ;
 
 
-hex
+hex flash
 create font   \ 5x8    
   00 c, 00 c, 00 c, 00 c, 00 c, \
   00 c, 00 c, 4f c, 00 c, 00 c, \ !
@@ -262,7 +265,7 @@ create font   \ 5x8
   00 c, 41 c, 77 c, 08 c, 00 c, \ }
   10 c, 08 c, 18 c, 10 c, 08 c, \ ~
 decimal
-
+ram
 \ Translates ASCII to address of bitpatterns:
 : a>bp ( c -- c-adr ) 
   $20 max $7f min  $20 - 5 * font + ;
@@ -291,3 +294,76 @@ decimal
 	do dup c@ drc 1 spc 1+ loop drop ;
 
 : ssdhello ssdi cls s" hello" dtxt ;
+-ssd-commands
+marker -ssd-commands
+
+\ see SSD1306 datasheet https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
+
+: makecmd ( command -- ) \ makes a one-byte command
+  create , does> @ dcmd ;
+: makedcmd ( command1 command2 -- ) \ makes a two-byte command
+  create , , does> @+ swap @ swap command-stream i2c.w2 ;
+
+$a4 makecmd display-enable
+$a5 makecmd display-on
+
+$a7 makecmd invert-on
+$a6 makecmd invert-off
+
+$26 $2f makedcmd scroll-on
+$2e makecmd scroll-off
+
+$ae makecmd oled-off
+$af makecmd oled-on
+
+\ **
+\ ** ADDRESSING **
+
+$20 $00 makedcmd hori-addr-mode
+$20 $01 makedcmd vert-addr-mode
+$20 $10 makedcmd page-addr-mode
+
+\ Sets column start address. Only for page addressing mode
+: set-col-addr ( column-address -- )
+  dup $0f and
+  swap $f0 and 4 rshift $10 or
+  2 dcmds
+;
+
+\ sets column start and end address. Only for horizontal
+\ or vertical addressing mode. start, end 0..127
+: set-col-bounds ( start end -- )
+  i2c.startcmds
+  $21 i2c.wb          \ $21 setup column start and end address
+  swap $7f and i2c.wb \ start
+  $7f and i2c.wb      \ end
+  i2c.stop
+;
+
+\ sets page start and end address. only for horizontal
+\ or vertical addressing mode. start, end 0..7
+: set-page-bounds ( start end -- ) \ 0..7
+  i2c.startcmds
+  $22 i2c.wb          \ $22 setup page start and end address
+  swap $07 and i2c.wb \ start address
+  $07 and i2c.wb      \ end address
+  i2c.stop
+;
+
+\ sets GDDRAM page start address PAGE0..PAGE7
+\ for page addressing mode
+: set-page-start ( start -- ) \ 0..7
+  $07 and $b0 or dcmd
+;
+
+\ tests
+: foo s" foobar" dtxt ;
+
+\ clears everything and starts at 0,0 in horizontal addressing mode
+: clshome
+  hori-addr-mode
+  0 7 set-page-bounds
+  0 127 set-col-bounds
+  0 set-col-addr
+  cls
+;
