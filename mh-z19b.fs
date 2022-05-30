@@ -60,10 +60,11 @@ $0029 constant pind
 
 : co2loop
   ssdi clshome
+  s" CO2: " dtxt
   begin
     get1pulse
-    clshome
-    s" CO2:  " dtxt dnum
+    30 set-col-addr
+    dnum
     key?
   until
 ;
